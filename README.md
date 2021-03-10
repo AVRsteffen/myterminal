@@ -1,19 +1,22 @@
 MyTerminal
 ==========
+This is only a modified copy in tft_640x480 Branch of impressive work of Zigazou!
 
 MyTerminal is a serial terminal implemented on an FPGA.
+
+
 
 ![MyTerminal](doc/myterminal.png)
 
 Characteristics
 ---------------
 
-- VGA output
-  - 1280×1024@60Hz,
+- 333 paralell RGB display interface Data output
+  - 640×480@60Hz,
   - 16 colors from a 512 colors/9 bits palette
   - 16×20 1024 character set
   - semi-graphic characters
-- fast serial input (tested at 3 Mbps)
+- serial input (tested at 115200 kbps)
   - CTSRTS control signal when doing “intensive” operations
   - 8 characters FIFO 
   - UTF-8 support
@@ -25,9 +28,7 @@ Requirements
 ------------
 
 - Tang SiPeed Primer (Anlogic Eagle EG4S20BG256)
-- Tang Dynasty 4.6
-- Icarus Verilog
-- Python 3
+- Tang Dynasty 5.0.3
 
 Notes
 -----

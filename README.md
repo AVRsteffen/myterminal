@@ -4,7 +4,7 @@ This is only a modified copy in tft_640x480 Branch of impressive work of Zigazou
 
 MyTerminal is a serial terminal implemented on an FPGA.
 
-
+![MyTerminal_TFT_640x480](https://user-images.githubusercontent.com/2552410/110627403-3a6f7480-81a2-11eb-8a6f-c4456ea768bc.jpg)
 
 Characteristics
 ---------------
@@ -27,6 +27,7 @@ Requirements
 
 - Tang SiPeed Primer (Anlogic Eagle EG4S20BG256)
 - Tang Dynasty 5.0.3
+
 
 Notes
 -----

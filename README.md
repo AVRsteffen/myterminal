@@ -3,8 +3,6 @@ MyTerminal
 
 MyTerminal is a serial terminal implemented on an FPGA.
 
-![MyTerminal_TFT_640x480](https://user-images.githubusercontent.com/2552410/110625951-65f15f80-81a0-11eb-9bea-ac71077a1000.jpg)
-
 ![MyTerminal](doc/myterminal.png)
 
 Characteristics

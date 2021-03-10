@@ -6,8 +6,6 @@ MyTerminal is a serial terminal implemented on an FPGA.
 
 
 
-![MyTerminal](doc/myterminal.png)
-
 Characteristics
 ---------------
 

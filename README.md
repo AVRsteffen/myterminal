@@ -3,6 +3,8 @@ MyTerminal
 
 MyTerminal is a serial terminal implemented on an FPGA.
 
+![MyTerminal_TFT_640x480](https://user-images.githubusercontent.com/2552410/110625951-65f15f80-81a0-11eb-9bea-ac71077a1000.jpg)
+
 ![MyTerminal](doc/myterminal.png)
 
 Characteristics
@@ -28,6 +30,8 @@ Requirements
 - Tang Dynasty 4.6
 - Icarus Verilog
 - Python 3
+- 
+![20210303_224621](https://user-images.githubusercontent.com/2552410/110626043-87524b80-81a0-11eb-8b78-053388caf211.jpg)
 
 Notes
 -----

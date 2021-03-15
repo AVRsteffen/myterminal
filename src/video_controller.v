@@ -1,0 +1,418 @@
+module video_controller #(
+	// Video parameters (640×480@60Hz, dot clock = 25 MHz)
+	parameter HORZ_BACK_PORCH   = 40,
+	parameter HORZ_VISIBLE      = 640,
+	parameter HORZ_FRONT_PORCH  = 24,
+	parameter HORZ_SYNC         = 96,
+
+	parameter VERT_BACK_PORCH   = 33,
+	parameter VERT_VISIBLE      = 480,
+	parameter VERT_FRONT_PORCH  = 10,
+	parameter VERT_SYNC         = 2,
+
+	// Character dimensions
+	parameter CHAR_WIDTH        = 'd16,
+	parameter CHAR_HEIGHT       = 'd20
+) (
+	// Base signals
+	input wire clk,
+	input wire reset,
+
+	// VGA output
+	output wire hsync,
+	output wire vsync,	
+	output wire data_en,
+	output reg [2:0] pixel_red,
+	output reg [2:0] pixel_green,
+	output reg [2:0] pixel_blue,
+
+	// SDRAM interface
+	output reg rd_request,
+	output reg [22:0] rd_address,
+	input wire rd_available,
+	input wire [31:0] rd_data,
+	output reg [8:0] rd_burst_length,
+
+	// Font interface
+    output reg [14:0] font_address,
+    input wire [CHAR_WIDTH - 1:0] char_row_bitmap,
+
+	// Registers
+	input wire [3:0] register_index,
+	input wire [22:0] register_value
+);
+
+`include "constant.v"
+
+`include "video_controller/registers.v"
+`include "video_controller/generate_pattern.v"
+`include "video_controller/apply_pattern.v"
+`include "video_controller/horizontal_resize.v"
+`include "video_controller/vertical_resize.v"
+
+// =============================================================================
+// Registers
+// =============================================================================
+reg [22:0] base_address;
+reg [22:0] first_row;
+reg [5:0] cursor_row;
+reg [6:0] cursor_col;
+reg cursor_visible;
+always @(posedge clk)
+	if (reset) begin
+		base_address <= 'd0;
+		first_row <= 'd0;
+		cursor_row <= 'd0;
+		cursor_col <= 'd0;
+		cursor_visible <= TRUE;
+	end else
+		case (register_index)
+			VIDEO_SET_BASE_ADDRESS: base_address <= register_value;
+			VIDEO_SET_FIRST_ROW: first_row <= register_value;
+			VIDEO_CURSOR_POSITION: begin
+				cursor_visible <= register_value[13];
+				cursor_row <= register_value[12:7];
+				cursor_col <= register_value[6:0];
+			end
+		endcase
+
+// =============================================================================
+// Video timings (640x480@60Hz)
+// =============================================================================
+localparam
+	HORZ_TOTAL = HORZ_BACK_PORCH + HORZ_VISIBLE + HORZ_FRONT_PORCH + HORZ_SYNC,
+	VERT_TOTAL = VERT_BACK_PORCH + VERT_VISIBLE + VERT_FRONT_PORCH + VERT_SYNC,
+
+	HORZ_VISIBLE_START = HORZ_BACK_PORCH,
+	HORZ_VISIBLE_END   = HORZ_BACK_PORCH + HORZ_VISIBLE,
+	HORZ_SYNC_START    = HORZ_BACK_PORCH + HORZ_VISIBLE + HORZ_FRONT_PORCH,
+
+	VERT_VISIBLE_START = VERT_BACK_PORCH,
+	VERT_VISIBLE_END   = VERT_BACK_PORCH + VERT_VISIBLE,
+	VERT_SYNC_START    = VERT_BACK_PORCH + VERT_VISIBLE + VERT_FRONT_PORCH;
+
+// =============================================================================
+// Color palette (16 × 9 bit colors)
+// =============================================================================
+localparam
+	PALETTE_SIZE = 'd16,
+	COLOR_DEPTH = 'd9;
+
+reg [COLOR_DEPTH - 1:0] palette [PALETTE_SIZE - 1:0];
+
+always @(posedge clk)
+	if (reset) begin
+		`include "video_controller/ubuntu_palette.v"
+	end
+
+// =============================================================================
+// Horizontal pixel counter
+// =============================================================================
+reg [$clog2(HORZ_TOTAL):0] xpos = 0;
+always @(posedge clk)
+	if (reset)
+		xpos <= 'd0;
+	else
+		if (xpos == HORZ_TOTAL - 1) xpos <= 'd0;
+		else                        xpos <= xpos + 'd1;
+
+// =============================================================================
+// Vertical line counter
+// =============================================================================
+reg [$clog2(VERT_TOTAL):0] ypos = 0;
+always @(posedge clk)
+	if (reset)
+		ypos <= 'd0;
+	else
+		if (xpos == HORZ_TOTAL - 1) begin
+			if (ypos == VERT_TOTAL - 1) ypos <= 'd0;
+			else                        ypos <= ypos + 'd1;
+		end else
+			ypos <= ypos;
+
+// =============================================================================
+// Frame count
+// =============================================================================
+reg [9:0] frame_count;
+always @(posedge clk)
+	if (reset)
+		frame_count <= 'd0;
+	else if (xpos =='d0 && ypos == 'd0)
+		frame_count <= frame_count + 'd1;
+
+// =============================================================================
+// Synchronization signals
+// =============================================================================
+assign hsync = xpos < HORZ_SYNC_START;
+assign vsync = ypos < VERT_SYNC_START;
+
+reg pg;
+reg [4:0] char_row;
+reg [5:0] current_row;
+always @(posedge clk)
+	if (reset || ypos < VERT_VISIBLE_START - 1 || ypos > VERT_VISIBLE_END - 1) begin
+		char_row <= 'd0;
+		current_row <= 0;
+	end else if (xpos == HORZ_TOTAL - 1) begin
+		if (ypos == VERT_VISIBLE_START - 1) begin
+			char_row <= 'd0;
+			current_row <= 0;
+			pg <= 'd0;
+		end else if (char_row == CHAR_HEIGHT - 1) begin
+			char_row <= 'd0;
+			current_row <= current_row + 'd1;
+			pg <= ~pg;
+		end else
+			char_row <= char_row + 'd1;
+	end
+
+wire x_visible = xpos >= HORZ_VISIBLE_START && xpos < HORZ_VISIBLE_END;
+wire y_visible = ypos >= VERT_VISIBLE_START && ypos < VERT_VISIBLE_END;
+
+assign data_en = (xpos >= HORZ_VISIBLE_START && xpos < HORZ_VISIBLE_END) && (ypos >= VERT_VISIBLE_START && ypos < VERT_VISIBLE_END);
+
+wire [$clog2(HORZ_TOTAL):0] current_x = x_visible ? xpos - HORZ_VISIBLE_START : 'd0;
+wire [$clog2(HORZ_VISIBLE / 16):0] current_col = current_x[4 + $clog2(HORZ_VISIBLE / 16):4];
+
+wire preload =
+	ypos == VERT_VISIBLE_START - 1 + 0 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 1 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 2 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 3 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 4 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 5 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 6 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 7 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 8 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 9 * 20 ||
+
+	ypos == VERT_VISIBLE_START - 1 + 10 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 11 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 12 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 13 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 14 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 15 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 16 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 17 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 18 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 19 * 20 ||
+
+	ypos == VERT_VISIBLE_START - 1 + 20 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 21 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 22 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 23 * 20 ||
+	ypos == VERT_VISIBLE_START - 1 + 24 * 20;
+
+// =============================================================================
+// Preload characters and attributes for one row
+// =============================================================================
+reg [5:0] wr_index;
+reg [5:0] rd_index;
+reg wr_enable;
+
+wire cea0 = wr_enable && ~pg;
+wire [31:0] dob0;
+charattr_row row0 ( 
+	.clka (clk),
+	.addra (wr_index),
+	.cea (cea0),
+	.dia (rd_data),
+
+	.clkb (clk),
+	.addrb (rd_index),
+	.dob (dob0)
+);
+
+wire cea1 = wr_enable && pg;
+wire [31:0] dob1;
+charattr_row row1 ( 
+	.clka (clk),
+	.addra (wr_index),
+	.cea (cea1),
+	.dia (rd_data),
+
+	.clkb (clk),
+	.addrb (rd_index),
+	.dob (dob1)
+);
+
+wire [31:0] charattr = pg ? dob0 : dob1;
+always @(posedge clk)
+	if (reset || (xpos == 'd0 && ypos == 'd0)) begin
+		rd_request <= FALSE;
+		rd_address <= first_row;
+		rd_burst_length <= 'd40;
+		wr_index <= 'd0;
+		wr_enable <= FALSE;
+	end else if (preload) begin
+		rd_request <= xpos == 'd0;
+
+		if (xpos == HORZ_TOTAL - 1) begin
+			if (rd_address + ROW_SIZE >= base_address + PAGE_SIZE)
+				rd_address <= base_address;
+			else
+				rd_address <= rd_address + ROW_SIZE;
+		end
+
+		if (xpos == 'd0) begin
+			wr_index <= 'h3F; //'d0;
+		end else if (wr_index < COLUMNS - 1 || wr_index == 'h3F) begin
+			if (rd_available) begin
+				wr_enable <= TRUE;
+				wr_index <= wr_index + 'd1;
+			end else
+				wr_enable <= FALSE;
+		end
+	end else begin
+		rd_request <= FALSE;
+		wr_index <= 'd0;
+	end
+
+// =============================================================================
+// Pixel generation
+// =============================================================================
+localparam
+	STEP_CHARATTR_READ = 'd0,
+	STEP_HORZ_RESIZE = 'd3,
+	STEP_APPLY_PATTERN = 'd4,
+	STEP_DRAW_BITMAP = 'd5,
+	STEP_NEXT = 'd6;
+
+reg [2:0] step;
+
+// Helpers pointing to character attributes
+reg [3:0] fg;
+reg [3:0] bg;
+reg [15:0] pattern;
+reg [1:0] func;
+reg horz_size;
+reg horz_part;
+
+// Memory where pixels will be written
+reg wr_pixel_enable;
+reg [63:0] wr_pixel_data;
+reg [5:0] wr_pixel_addr;
+wire [3:0] current_pixel_index;
+wire [9:0] addrb = xpos - HORZ_VISIBLE_START + 10'd2;
+
+pixels pixels (
+	.clka (clk),
+	.addra (wr_pixel_addr),
+	.cea (wr_pixel_enable),
+	.dia (wr_pixel_data),
+
+	.clkb (clk),
+	.addrb (addrb),
+	.dob (current_pixel_index)
+);
+
+wire blink =
+	charattr[15:14] != 2'b00 ? (charattr[15:14] == frame_count[6:5]) : FALSE;
+
+wire cursor_blink = frame_count[4];
+reg underline;
+
+reg [15:0] bitmap;
+always @(posedge clk)
+	if (reset || xpos == HORZ_TOTAL - 1 || ypos < VERT_VISIBLE_START || ypos >= VERT_VISIBLE_END) begin
+		step <= STEP_CHARATTR_READ;
+		rd_index <= 'd0;
+		wr_pixel_addr <= 'd0;
+		underline <= 'b0;
+	end	else if (xpos > 'd3 && ~(rd_index == COLUMNS && step == STEP_NEXT)) begin
+		case (step)
+			STEP_CHARATTR_READ: begin
+				rd_index <= rd_index + 'd1;
+
+				// Apply blink and invert attribute
+				if (charattr[16]) begin
+					fg <= blink ? charattr[27:24] : charattr[31:28];
+					bg <= charattr[27:24];
+				end else begin
+					fg <= blink ? charattr[31:28] : charattr[27:24];
+					bg <= charattr[31:28];
+				end
+
+				// Underline
+				underline <= charattr[17] && char_row == 'd17 && charattr[13] == charattr[11];
+
+				font_address <=
+					{ 5'b0, charattr[9:0] } * 15'd20 +
+					{ 10'b0, vertical_resize(charattr[11], charattr[13], char_row) };
+				
+				pattern <= generate_pattern(charattr[23:20], ypos[3:0]);
+				func <= charattr[19:18];
+
+				horz_size <= charattr[10];
+				horz_part <= charattr[12];
+			end
+
+			STEP_HORZ_RESIZE:
+				bitmap <= horizontal_resize(horz_size, horz_part, char_row_bitmap);
+
+			STEP_APPLY_PATTERN:
+				bitmap <= apply_pattern(func, bitmap, pattern);
+
+			STEP_DRAW_BITMAP: begin
+				wr_pixel_enable <= TRUE;
+				if (underline) begin
+					wr_pixel_data <= {
+						fg, fg, fg, fg, fg, fg, fg, fg,
+						fg, fg, fg, fg, fg, fg, fg, fg
+					};
+				end else begin
+					wr_pixel_data[3:0] <= bitmap[15] ? fg : bg;
+					wr_pixel_data[7:4] <= bitmap[14] ? fg : bg;
+					wr_pixel_data[11:8] <= bitmap[13] ? fg : bg;
+					wr_pixel_data[15:12] <= bitmap[12] ? fg : bg;
+					wr_pixel_data[19:16] <= bitmap[11] ? fg : bg;
+					wr_pixel_data[23:20] <= bitmap[10] ? fg : bg;
+					wr_pixel_data[27:24] <= bitmap[9] ? fg : bg;
+					wr_pixel_data[31:28] <= bitmap[8] ? fg : bg;
+					wr_pixel_data[35:32] <= bitmap[7] ? fg : bg;
+					wr_pixel_data[39:36] <= bitmap[6] ? fg : bg;
+					wr_pixel_data[43:40] <= bitmap[5] ? fg : bg;
+					wr_pixel_data[47:44] <= bitmap[4] ? fg : bg;
+					wr_pixel_data[51:48] <= bitmap[3] ? fg : bg;
+					wr_pixel_data[55:52] <= bitmap[2] ? fg : bg;
+					wr_pixel_data[59:56] <= bitmap[1] ? fg : bg;
+					wr_pixel_data[63:60] <= bitmap[0] ? fg : bg;
+				end
+			end
+
+			STEP_NEXT: begin
+				wr_pixel_enable <= FALSE;
+				wr_pixel_addr <= wr_pixel_addr + 'd1;
+			end
+		endcase
+
+		if (step == STEP_NEXT) step <= STEP_CHARATTR_READ;
+		else                   step <= step + 'd1;
+	end
+
+// =============================================================================
+// Display pixels
+// =============================================================================
+reg [8:0] current_pixel;
+always @(posedge clk) current_pixel <= palette[current_pixel_index];
+
+always @(posedge clk)
+	if (y_visible && x_visible && ~reset) begin
+		if (cursor_visible && cursor_blink && current_col == cursor_col && current_row == cursor_row) begin
+			pixel_red <= ~current_pixel[8:6];
+			pixel_green <= ~current_pixel[5:3];
+			pixel_blue <= ~current_pixel[2:0];
+		end else begin
+			pixel_red <= current_pixel[8:6];
+			pixel_green <= current_pixel[5:3];
+			pixel_blue <= current_pixel[2:0];
+		end
+	end else begin
+		pixel_red <= 'd0;
+		pixel_green <= 'd0;
+		pixel_blue <= 'd0;
+	end
+	
+	
+
+endmodule

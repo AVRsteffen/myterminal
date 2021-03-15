@@ -4,13 +4,13 @@ This is only a modified copy in tft_640x480 Branch of impressive work of Zigazou
 
 MyTerminal is a serial terminal implemented on an FPGA.
 
-![MyTerminal_TFT_640x480](https://user-images.githubusercontent.com/2552410/110627403-3a6f7480-81a2-11eb-8a6f-c4456ea768bc.jpg)
+
 
 Characteristics
 ---------------
 
-- 333 paralell RGB display interface Data output
-  - 640×480@60Hz,
+- emulated 24bit paralell RGB display interface Data output
+  - 640×480 @60Hz,
   - 16 colors from a 512 colors/9 bits palette
   - 16×20 1024 character set
   - semi-graphic characters
@@ -18,7 +18,7 @@ Characteristics
   - CTSRTS control signal when doing “intensive” operations
   - 8 characters FIFO 
   - UTF-8 support
-- low cost (cheap FPGA, 9 resistor DAC…)
+- 888 RGB interface with 25Mhz clock and Hsync, Vsync and DEN
 - written in Verilog
 - inspired by Videotex and text mode video card
 
@@ -33,3 +33,4 @@ Notes
 -----
 
 This is work in progress!
+Wiki is in work!

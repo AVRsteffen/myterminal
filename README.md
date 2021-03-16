@@ -29,6 +29,9 @@ Requirements
 - Tang SiPeed Primer (Anlogic Eagle EG4S20BG256)
 - Tang Dynasty 5.0.3
 
+Schematic
+---------
+![Schematic_TFT_640x480_NEC](https://github.com/AVRsteffen/myterminal/blob/TFT_640x480_NEC/Wiki/Schematic2.png)
 
 Notes
 -----

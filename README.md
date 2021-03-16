@@ -1,8 +1,9 @@
-MyTerminal on a SiPeed Tang Primer FPGA Board
+### MyTerminal 
+## @ SiPeed Tang Primer FPGA Board
 ==========
 This is only a modified copy in tft_640x480 Branch of impressive work of Zigazou!
 
-'''MyTerminal is a serial terminal implemented on an Anlogic EG4S20BG256 FPGA.'''
+## **MyTerminal is a serial terminal implemented on an Anlogic EG4S20BG256 FPGA.**
 
 ![MyTerminal_TFT_640x480_NEC](https://github.com/AVRsteffen/myterminal/blob/tft_640x480/Wiki/Display_Test_NEC_01.jpg)
 

@@ -36,5 +36,5 @@ Schematic
 Notes
 -----
 
-This is work in progress!
-Wiki is in work!
+* This is work in progress!
+* [Wiki](https://github.com/AVRsteffen/myterminal/wiki) is in work!

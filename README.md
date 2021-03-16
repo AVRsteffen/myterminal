@@ -4,7 +4,7 @@ This is only a modified copy in tft_640x480 Branch of impressive work of Zigazou
 
 MyTerminal is a serial terminal implemented on an FPGA.
 
-
+![MyTerminal_TFT_640x480_NEC](https://github.com/AVRsteffen/myterminal/blob/tft_640x480/Wiki/Display_Test_NEC_01.jpg)
 
 Characteristics
 ---------------
